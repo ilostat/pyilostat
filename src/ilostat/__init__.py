@@ -1,0 +1,16 @@
+from importlib.metadata import version
+
+from .data import get_df
+from .dictionary import get_dataset_dic, get_dic
+from .metadata import get_metadata, get_toc
+
+__version__ = version("ilostat")
+
+__all__ = [
+    "__version__",
+    "get_dataset_dic",
+    "get_df",
+    "get_dic",
+    "get_metadata",
+    "get_toc",
+]
