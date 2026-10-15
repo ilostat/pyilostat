@@ -12,7 +12,12 @@ requires-python = ">=3.10"
 license = "MIT"
 
 authors = [
-    { name = "International Labour Organization" }
+    { name = "David Bescond", email = "bescond@ilo.org" },
+    { name = "International Labour Organization" },
+]
+
+maintainers = [
+    { name = "David Bescond", email = "bescond@ilo.org" },
 ]
 
 keywords = [
@@ -52,7 +57,7 @@ dev = [
 
 [project.urls]
 Homepage = "https://ilostat.ilo.org/"
-Repository = "https://github.com/ilostat/ilostat"
+Repository = "https://github.com/ilostat/pyilostat"
 Documentation = "https://ilostat.ilo.org/"
 
 
