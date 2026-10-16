@@ -387,8 +387,18 @@ International Labour Organization
 
 If you use `ilostat` in research or publications, please cite the package using the citation metadata provided in [`CITATION.cff`](CITATION.cff).
 
-## License
+## Software license
 
-This project is licensed under the [BSD 2-Clause License](LICENSE).
+`ilostat` is distributed under the [BSD 2-Clause License](LICENSE).
 
 Copyright © 2026 International Labour Organization.
+
+## ILOSTAT data licensing
+
+ILOSTAT databases and datasets, together with their accompanying referential metadata, published by the International Labour Organization (ILO) as of 3 May 2023 are licensed under the [Creative Commons Attribution 4.0 International License (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/), unless otherwise indicated.
+
+Users may reuse, share and adapt this material in accordance with the terms of the licence and must give appropriate credit to the International Labour Organization (ILO) as the source.
+
+The licensing of ILOSTAT data and metadata is separate from the BSD 2-Clause License applying to the `ilostat` Python software.
+
+For full information on ILO copyright, data licensing, third-party material and other rights and permissions, see the [ILO Rights and permissions](https://www.ilo.org/rights-and-permissions) page.
