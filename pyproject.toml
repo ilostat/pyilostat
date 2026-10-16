@@ -9,7 +9,7 @@ version = "0.1.0"
 description = "Python tools for accessing and working with ILOSTAT data"
 readme = "README.md"
 requires-python = ">=3.10"
-license = "MIT"
+license = "BSD-2-Clause"
 
 authors = [
     { name = "David Bescond", email = "bescond@ilo.org" },

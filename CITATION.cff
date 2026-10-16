@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata below."
+
+title: "ilostat: Python tools for accessing and working with ILOSTAT data"
+version: 0.1.0
+
+authors:
+  - family-names: "Bescond"
+    given-names: "David"
+    orcid: "https://orcid.org/0000-0002-1642-0304"
+    affiliation: "International Labour Organization"
+
+repository-code: "https://github.com/ilostat/pyilostat"
+url: "https://ilostat.ilo.org/"
+
+license: "BSD-2-Clause"

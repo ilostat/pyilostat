@@ -6,13 +6,13 @@ Python tools for accessing and working with [ILOSTAT](https://ilostat.ilo.org/) 
 
 ## Installation
 
-For development, install the package from the project directory:
+Install `ilostat` from PyPI:
 
 ```bash
-python -m pip install -e .
+python -m pip install ilostat
 ```
 
-To include development and testing dependencies:
+For development, clone the repository and install the package in editable mode with the development and testing dependencies:
 
 ```bash
 python -m pip install -e ".[dev]"
@@ -186,9 +186,9 @@ df = ilostat.get_df(
 Available options are:
 
 ```text
-yes   best source only
-no    non-best source only
-all   all sources
+yes    best source only
+no     non-best source only
+all    all sources
 ```
 
 For example:
@@ -377,6 +377,18 @@ Build the package with:
 python -m build
 ```
 
+## Author
+
+**David Bescond**  
+International Labour Organization  
+[ORCID: 0000-0002-1642-0304](https://orcid.org/0000-0002-1642-0304)
+
+## Citation
+
+If you use `ilostat` in research or publications, please cite the package using the citation metadata provided in [`CITATION.cff`](CITATION.cff).
+
 ## License
 
-MIT License.
+This project is licensed under the [BSD 2-Clause License](LICENSE).
+
+Copyright © 2026 International Labour Organization.
