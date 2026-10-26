@@ -37,11 +37,10 @@ def test_format_last_update():
 def test_cache_filename():
     result = _cache_filename(
         dataset_id="CPI_XCPI_COI_RT_A",
-        segment="indicator",
         last_update="20/09/2026 07:34:56",
     )
 
     assert (
         result
-        == "indicator-CPI_XCPI_COI_RT_A-20260920T073456.parquet"
+        == "CPI_XCPI_COI_RT_A-20260920T073456.parquet"
     )

@@ -65,7 +65,7 @@ def test_get_df_creates_cache(tmp_path):
 
     cached_files = list(
         segment_dir.glob(
-            f"indicator-{DATASET_ID}-*.parquet"
+            f"{DATASET_ID}-*.parquet"
         )
     )
 

@@ -357,6 +357,118 @@ ilostat.get_df(
 )
 ```
 
+## Cache
+
+`ilostat` caches downloaded data and metadata locally to avoid downloading the same resources repeatedly.
+
+### Default cache
+
+By default, no cache configuration is required:
+
+```python
+import ilostat
+
+df = ilostat.get_df(
+    "UNE_TUNE_SEX_AGE_NB_A",
+)
+```
+
+When `cache_dir` is not specified, `ilostat` uses the operating system's standard user cache location.
+
+You can see the location used on your system with:
+
+```python
+ilostat.get_cache_dir()
+```
+
+The default cache is **persistent**: cached files remain available after the Python session ends and are reused by later sessions.
+
+This improves performance and reduces unnecessary downloads. However, ILOSTAT datasets can be large, and using many different datasets may progressively increase the size of the local cache.
+
+Users who prefer not to use space in their operating system user cache can specify their own cache directory.
+
+### Custom cache directory
+
+Use `cache_dir` to store cached resources in a location of your choice:
+
+```python
+df = ilostat.get_df(
+    "UNE_TUNE_SEX_AGE_NB_A",
+    cache_dir="D:/ilostat_cache",
+)
+```
+
+The same cache directory can be shared across ILOSTAT operations:
+
+```python
+df = ilostat.get_df(
+    "UNE_TUNE_SEX_AGE_NB_A",
+    cache_dir="D:/ilostat_cache",
+)
+
+sdmx = ilostat.get_sdmx(
+    "UNE_TUNE_SEX_AGE_NB_A",
+    cache_dir="D:/ilostat_cache",
+)
+```
+
+The custom directory can be inspected with:
+
+```python
+ilostat.get_cache_dir(
+    "D:/ilostat_cache",
+)
+```
+
+### Cache versions and refresh
+
+Cached resources are versioned using the ILOSTAT `last.update` timestamp.
+
+When the current version is already available locally, `ilostat` can reuse it instead of downloading the resource again.
+
+When a newer version of the same resource is cached, obsolete cached versions of that resource are removed automatically.
+
+To force a fresh retrieval, use:
+
+```python
+df = ilostat.get_df(
+    "UNE_TUNE_SEX_AGE_NB_A",
+    refresh=True,
+)
+```
+
+The same `refresh` option can be used together with a custom cache:
+
+```python
+df = ilostat.get_df(
+    "UNE_TUNE_SEX_AGE_NB_A",
+    cache_dir="D:/ilostat_cache",
+    refresh=True,
+)
+```
+
+### Clearing the cache
+
+Cached files are not automatically deleted when a Python session ends.
+
+To remove all resources stored in the default ILOSTAT cache:
+
+```python
+ilostat.clean_cache()
+```
+
+To clean a custom ILOSTAT cache:
+
+```python
+ilostat.clean_cache(
+    cache_dir="D:/ilostat_cache",
+)
+```
+
+`clean_cache()` removes the cached files and empty subdirectories while preserving the cache root directory.
+
+For users working with many or very large ILOSTAT datasets, using a custom `cache_dir` and cleaning it when no longer needed provides explicit control over local disk usage.
+
 ## Development
 
 Run the test suite with:

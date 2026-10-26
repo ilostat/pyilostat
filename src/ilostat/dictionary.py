@@ -157,7 +157,6 @@ def get_dataset_dic(
 
     filename = _versioned_cache_filename(
         dataset_id=dataset_id,
-        segment=segment,
         last_update=last_update,
         suffix="_dic.json",
     )
@@ -183,7 +182,6 @@ def get_dataset_dic(
         _remove_old_cache_files(
             cache_dir=segment_dir,
             dataset_id=dataset_id,
-            segment=segment,
             keep_file=dic_file,
             suffix="_dic.json",
         )

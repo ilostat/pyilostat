@@ -96,7 +96,6 @@ def _get_df_single(
 
     filename = _cache_filename(
         dataset_id=dataset_id,
-        segment=segment,
         last_update=last_update,
     )
 
@@ -127,7 +126,6 @@ def _get_df_single(
         _remove_old_cache_files(
             cache_dir=segment_dir,
             dataset_id=dataset_id,
-            segment=segment,
             keep_file=dataset_file,
         )
 
