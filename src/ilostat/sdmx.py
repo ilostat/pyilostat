@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import xml.etree.ElementTree as ET
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -20,11 +23,75 @@ VALID_TYPES = {
     "both",
 }
 
+SDMX_COMPONENT_NAMES = {
+    "SOURCE": {
+        "en": "Source",
+        "fr": "Source",
+        "es": "Fuente",
+    },
+    "FREQ": {
+        "en": "Frequency",
+        "fr": "Fréquence",
+        "es": "Frecuencia",
+    },
+    "MEASURE": {
+        "en": "Measure",
+        "fr": "Mesure",
+        "es": "Medida",
+    },
+    "TIME_PERIOD": {
+        "en": "Time period",
+        "fr": "Période",
+        "es": "Período",
+    },
+    "OBS_VALUE": {
+        "en": "Observation value",
+        "fr": "Valeur observée",
+        "es": "Valor observado",
+    },
+    "OBS_STATUS": {
+        "en": "Observation status",
+        "fr": "Statut de l'observation",
+        "es": "Estado de la observación",
+    },
+    "UNIT_MEASURE": {
+        "en": "Unit of measure",
+        "fr": "Unité de mesure",
+        "es": "Unidad de medida",
+    },
+    "UNIT_MULT": {
+        "en": "Multiplier",
+        "fr": "Multiplicateur",
+        "es": "Multiplicador",
+    },
+    "NOTE_SOURCE": {
+        "en": "Source note",
+        "fr": "Note sur la source",
+        "es": "Nota sobre la fuente",
+    },
+    "NOTE_INDICATOR": {
+        "en": "Indicator note",
+        "fr": "Note sur l'indicateur",
+        "es": "Nota sobre el indicador",
+    },
+    "NOTE_CLASSIF": {
+        "en": "Classification note",
+        "fr": "Note sur la classification",
+        "es": "Nota sobre la clasificación",
+    },
+    "BEST_SOURCE": {
+        "en": "Best source",
+        "fr": "Meilleure source",
+        "es": "Mejor fuente",
+    },
+}
+
 def get_sdmx(
     dataset_id: str,
     resource: str = "data",
     segment: str = "indicator",
     type: str = "code",
+    format: str = "dataframe",
     lang: str = "en",
     filters: dict | None = None,
     best_source: str = "yes",
@@ -86,6 +153,18 @@ def get_sdmx(
     resource = resource.lower()
     type = type.lower()
 
+    format = format.lower()
+
+    if format not in {
+        "dataframe",
+        "sdmx-ml",
+        "sdmx-json",
+    }:
+        raise ValueError(
+            "Invalid format value. "
+            "Choose from 'dataframe' or 'sdmx-ml'."
+        )
+
     if resource not in VALID_RESOURCES:
         raise ValueError(
             "Invalid resource value. "
@@ -107,6 +186,17 @@ def get_sdmx(
             filters=filters,
             best_source=best_source,
             fixed=fixed,
+            cache_dir=cache_dir,
+            refresh=refresh,
+        )
+
+    if resource == "structure":
+        return _get_sdmx_structure(
+            dataset_id=dataset_id,
+            segment=segment,
+            type=type,
+            format=format,
+            lang=lang,
             cache_dir=cache_dir,
             refresh=refresh,
         )
@@ -218,6 +308,986 @@ def _get_sdmx_data(
     return out.reset_index(
         drop=True
     )
+
+def _get_sdmx_structure(
+    dataset_id: str,
+    segment: str,
+    type: str,
+    format: str,
+    lang: str,
+    cache_dir: str | Path | None,
+    refresh: bool,
+):
+    """
+    Retrieve the SDMX structure associated with an
+    ILOSTAT dataset.
+    """
+
+    meta = get_metadata(
+        dataset_id=dataset_id,
+        segment=segment,
+        cache_dir=cache_dir,
+        refresh=refresh,
+    )
+
+    if format == "dataframe":
+        return _to_sdmx_structure(
+            meta=meta,
+            type=type,
+            lang=lang,
+        )
+
+    if format == "sdmx-ml":
+        model = _build_sdmx_structure_model(
+            dataset_id=dataset_id,
+            meta=meta,
+            lang=lang,
+        )
+
+        return _to_sdmx_ml_structure(
+            model=model,
+            meta=meta,
+            lang=lang,
+        )
+        
+    if format == "sdmx-json":
+        model = _build_sdmx_structure_model(
+            dataset_id=dataset_id,
+            meta=meta,
+            lang=lang,
+        )
+
+        return _to_sdmx_json_structure(
+            model=model,
+            meta=meta,
+            lang=lang,
+        )
+
+
+    raise ValueError(
+        f"Unsupported SDMX structure format '{format}'."
+    )
+
+def _to_sdmx_json_structure(
+    model: dict,
+    meta: dict,
+    lang: str,
+) -> str:
+    """
+    Serialize an internal ILOSTAT SDMX structure model
+    as SDMX-JSON Structure 2.1.
+    """
+    dimensions = []
+    attributes = []
+    measures = []
+    time_dimension = None
+
+    for component in model["components"]:
+
+        concept_urn = (
+            "urn:sdmx:org.sdmx.infomodel."
+            "conceptscheme.Concept="
+            f"{model['agency']}:"
+            f"{model['concept_scheme']}"
+            f"({model['version']})."
+            f"{component['id']}"
+        )
+
+        item = {
+            "id": component["id"],
+            "conceptIdentity": concept_urn,
+        }
+
+        # ------------------------------------------------------
+        # Coded representation
+        # ------------------------------------------------------
+
+        if component["codelist"] is not None:
+            item["localRepresentation"] = {
+                "enumeration": (
+                    "urn:sdmx:org.sdmx.infomodel."
+                    "codelist.Codelist="
+                    f"{model['agency']}:"
+                    f"{component['codelist'].upper()}"
+                    f"({model['version']})"
+                )
+            }
+
+        # ------------------------------------------------------
+        # Dimensions
+        # ------------------------------------------------------
+
+        if component["role"] == "dimension":
+
+            if component["id"] == "TIME_PERIOD":
+                item["localRepresentation"] = {
+                    "format": {
+                        "dataType": (
+                            "ObservationalTimePeriod"
+                        )
+                    }
+                }
+
+                time_dimension = item
+
+            else:
+                item["position"] = component[
+                    "position"
+                ]
+
+                dimensions.append(
+                    item
+                )
+
+        # ------------------------------------------------------
+        # Measure
+        # ------------------------------------------------------
+
+        elif component["role"] == "measure":
+            measures.append(
+                item
+            )
+
+        # ------------------------------------------------------
+        # Attributes
+        # ------------------------------------------------------
+
+        elif component["role"] == "attribute":
+            item["usage"] = "optional"
+
+            item["attributeRelationship"] = {
+                "observation": {}
+            }
+
+            attributes.append(
+                item
+            )
+
+    # ----------------------------------------------------------
+    # Concepts
+    # ----------------------------------------------------------
+
+    concepts = [
+        {
+            "id": component["id"],
+            "name": component["name"],
+            "names": {
+                lang: component["name"],
+            },
+        }
+        for component in model["components"]
+    ]
+
+    # ----------------------------------------------------------
+    # Message
+    # ----------------------------------------------------------
+
+    message = {
+        "$schema": (
+            "https://json.sdmx.org/2.1/"
+            "sdmx-json-structure-schema.json"
+        ),
+        "meta": {
+            "id": (
+                f"STRUCTURE_{model['id']}"
+            ),
+            "test": False,
+            "contentLanguages": [
+                lang,
+            ],
+            "sender": {
+                "id": model["agency"],
+            },
+        },
+        "data": {
+            "dataStructures": [
+                {
+                    "id": model["id"],
+                    "version": model["version"],
+                    "agencyID": model["agency"],
+                    "name": (
+                        f"Data structure for "
+                        f"{model['id']}"
+                    ),
+                    "names": {
+                        lang: (
+                            f"Data structure for "
+                            f"{model['id']}"
+                        ),
+                    },
+                    "dataStructureComponents": {
+                        "attributeList": {
+                            "id": (
+                                "AttributeDescriptor"
+                            ),
+                            "attributes": attributes,
+                        },
+                        "dimensionList": {
+                            "id": (
+                                "DimensionDescriptor"
+                            ),
+                            "dimensions": dimensions,
+                            "timeDimension": (
+                                time_dimension
+                            ),
+                        },
+                        "measureList": {
+                            "id": (
+                                "MeasureDescriptor"
+                            ),
+                            "measures": measures,
+                        },
+                    },
+                }
+            ],
+            "conceptSchemes": [
+                {
+                    "id": model[
+                        "concept_scheme"
+                    ],
+                    "version": model[
+                        "version"
+                    ],
+                    "agencyID": model[
+                        "agency"
+                    ],
+                    "name": (
+                        f"Concept scheme for "
+                        f"{model['id']}"
+                    ),
+                    "names": {
+                        lang: (
+                            f"Concept scheme for "
+                            f"{model['id']}"
+                        ),
+                    },
+                    "concepts": concepts,
+                }
+            ],
+        },
+    }
+
+    return json.dumps(
+        message,
+        ensure_ascii=False,
+        indent=2,
+    )
+
+def _to_sdmx_ml_structure(
+    model: dict,
+    meta: dict,
+    lang: str,
+) -> str:
+    """
+    Serialize an internal ILOSTAT SDMX structure model
+    as SDMX-ML.
+    """
+    namespaces = {
+        "mes": (
+            "http://www.sdmx.org/resources/"
+            "sdmxml/schemas/v3_1/message"
+        ),
+        "str": (
+            "http://www.sdmx.org/resources/"
+            "sdmxml/schemas/v3_1/structure"
+        ),
+        "com": (
+            "http://www.sdmx.org/resources/"
+            "sdmxml/schemas/v3_1/common"
+        ),
+    }
+
+    for prefix, uri in namespaces.items():
+        ET.register_namespace(
+            prefix,
+            uri,
+        )
+
+    # ----------------------------------------------------------
+    # Structure message
+    # ----------------------------------------------------------
+
+    root = ET.Element(
+        ET.QName(
+            namespaces["mes"],
+            "Structure",
+        )
+    )
+
+      # ----------------------------------------------------------
+    # Header
+    # ----------------------------------------------------------
+
+    header = ET.SubElement(
+        root,
+        ET.QName(
+            namespaces["mes"],
+            "Header",
+        ),
+    )
+
+    ET.SubElement(
+        header,
+        ET.QName(
+            namespaces["mes"],
+            "ID",
+        ),
+    ).text = (
+        f"STRUCTURE_{model['id']}"
+    )
+
+    ET.SubElement(
+        header,
+        ET.QName(
+            namespaces["mes"],
+            "Test",
+        ),
+    ).text = "false"
+
+    ET.SubElement(
+        header,
+        ET.QName(
+            namespaces["mes"],
+            "Prepared",
+        ),
+    ).text = (
+        datetime.now(UTC)
+        .isoformat(
+            timespec="seconds"
+        )
+        .replace(
+            "+00:00",
+            "Z",
+        )
+    )
+
+    sender = ET.SubElement(
+        header,
+        ET.QName(
+            namespaces["mes"],
+            "Sender",
+        ),
+        {
+            "id": model["agency"],
+        },
+    )
+
+    ET.SubElement(
+        sender,
+        ET.QName(
+            namespaces["com"],
+            "Name",
+        ),
+        {
+            "{http://www.w3.org/XML/1998/namespace}lang": "en",
+        },
+    ).text = (
+        "International Labour Organization"
+    )
+
+    ET.SubElement(
+        sender,
+        ET.QName(
+            namespaces["com"],
+            "Name",
+        ),
+        {
+            "{http://www.w3.org/XML/1998/namespace}lang": "en",
+        },
+    ).text = "International Labour Organization"
+
+    structures = ET.SubElement(
+        root,
+        ET.QName(
+            namespaces["mes"],
+            "Structures",
+        ),
+    )
+
+    # ----------------------------------------------------------
+    # Concept schemes
+    # ----------------------------------------------------------
+
+    concept_schemes = ET.SubElement(
+        structures,
+        ET.QName(
+            namespaces["str"],
+            "ConceptSchemes",
+        ),
+    )
+
+    concept_scheme = ET.SubElement(
+        concept_schemes,
+        ET.QName(
+            namespaces["str"],
+            "ConceptScheme",
+        ),
+        {
+            "id": model["concept_scheme"],
+            "agencyID": model["agency"],
+            "version": model["version"],
+        },
+    )
+
+    concept_scheme_name = ET.SubElement(
+        concept_scheme,
+        ET.QName(
+            namespaces["com"],
+            "Name",
+        ),
+        {
+            "{http://www.w3.org/XML/1998/namespace}lang": (
+                lang
+            ),
+        },
+    )
+
+    concept_scheme_name.text = (
+        f"Concept scheme for {model['id']}"
+    )
+
+    for component in model["components"]:
+
+        concept = ET.SubElement(
+            concept_scheme,
+            ET.QName(
+                namespaces["str"],
+                "Concept",
+            ),
+            {
+                "id": component["id"],
+            },
+        )
+
+        name = ET.SubElement(
+            concept,
+            ET.QName(
+                namespaces["com"],
+                "Name",
+            ),
+            {
+                "{http://www.w3.org/XML/1998/namespace}lang": (
+                    lang
+                ),
+            },
+        )
+
+        name.text = component["name"]
+
+    # ----------------------------------------------------------
+    # Data structures
+    # ----------------------------------------------------------
+
+    data_structures = ET.SubElement(
+        structures,
+        ET.QName(
+            namespaces["str"],
+            "DataStructures",
+        ),
+    )
+
+    data_structure = ET.SubElement(
+        data_structures,
+        ET.QName(
+            namespaces["str"],
+            "DataStructure",
+        ),
+        {
+            "id": model["id"],
+            "agencyID": model["agency"],
+            "version": model["version"],
+        },
+    )
+
+    data_structure_name = ET.SubElement(
+        data_structure,
+        ET.QName(
+            namespaces["com"],
+            "Name",
+        ),
+        {
+            "{http://www.w3.org/XML/1998/namespace}lang": (
+                lang
+            ),
+        },
+    )
+
+    data_structure_name.text = (
+        f"Data structure for {model['id']}"
+    )
+
+    # ----------------------------------------------------------
+    # Components
+    # ----------------------------------------------------------
+
+    components_element = ET.SubElement(
+        data_structure,
+        ET.QName(
+            namespaces["str"],
+            "DataStructureComponents",
+        ),
+    )
+
+    dimensions = ET.SubElement(
+        components_element,
+        ET.QName(
+            namespaces["str"],
+            "DimensionList",
+        ),
+    )
+
+    attributes = ET.SubElement(
+        components_element,
+        ET.QName(
+            namespaces["str"],
+            "AttributeList",
+        ),
+    )
+
+    measures = ET.SubElement(
+        components_element,
+        ET.QName(
+            namespaces["str"],
+            "MeasureList",
+        ),
+    )
+    # ----------------------------------------------------------
+    # Individual components
+    # ----------------------------------------------------------
+
+    for component in model["components"]:
+
+        role = component["role"]
+
+        if role == "dimension":
+            parent = dimensions
+
+            if component["id"] == "TIME_PERIOD":
+                element_name = "TimeDimension"
+            else:
+                element_name = "Dimension"
+
+        elif role == "measure":
+            parent = measures
+            element_name = "Measure"
+
+        elif role == "attribute":
+            parent = attributes
+            element_name = "Attribute"
+
+        else:
+            continue
+
+        properties = {
+            "id": component["id"],
+        }
+
+        if (
+            component["position"] is not None
+            and component["id"] != "TIME_PERIOD"
+        ):
+            properties["position"] = str(
+                component["position"]
+            )
+
+        component_element = ET.SubElement(
+            parent,
+            ET.QName(
+                namespaces["str"],
+                element_name,
+            ),
+            properties,
+        )
+
+        # ------------------------------------------------------
+        # Concept identity
+        # ------------------------------------------------------
+
+        concept_identity = ET.SubElement(
+            component_element,
+            ET.QName(
+                namespaces["str"],
+                "ConceptIdentity",
+            ),
+        )
+
+        concept_identity.text = (
+            "urn:sdmx:org.sdmx.infomodel."
+            "conceptscheme.Concept="
+            f"{model['agency']}:"
+            f"{model['concept_scheme']}"
+            f"({model['version']})."
+            f"{component['id']}"
+        )
+
+        # ------------------------------------------------------
+        # Time representation
+        # ------------------------------------------------------
+
+        if component["id"] == "TIME_PERIOD":
+
+            local_representation = ET.SubElement(
+                component_element,
+                ET.QName(
+                    namespaces["str"],
+                    "LocalRepresentation",
+                ),
+            )
+
+            text_format = ET.SubElement(
+                local_representation,
+                ET.QName(
+                    namespaces["str"],
+                    "TextFormat",
+                ),
+            )
+
+            text_format.set(
+                "textType",
+                "ObservationalTimePeriod",
+            )
+
+        # ------------------------------------------------------
+        # Coded representation
+        # ------------------------------------------------------
+
+        if component["codelist"] is not None:
+
+            local_representation = ET.SubElement(
+                component_element,
+                ET.QName(
+                    namespaces["str"],
+                    "LocalRepresentation",
+                ),
+            )
+
+            enumeration = ET.SubElement(
+                local_representation,
+                ET.QName(
+                    namespaces["str"],
+                    "Enumeration",
+                ),
+            )
+
+            enumeration.text = (
+                "urn:sdmx:org.sdmx.infomodel."
+                "codelist.Codelist="
+                f"{model['agency']}:"
+                f"{component['codelist'].upper()}"
+                f"({model['version']})"
+            )
+
+        # ------------------------------------------------------
+        # Attribute relationship
+        # ------------------------------------------------------
+
+        if (
+            role == "attribute"
+            and component["attachment"] == "observation"
+        ):
+
+            relationship = ET.SubElement(
+                component_element,
+                ET.QName(
+                    namespaces["str"],
+                    "AttributeRelationship",
+                ),
+            )
+
+            ET.SubElement(
+                relationship,
+                ET.QName(
+                    namespaces["str"],
+                    "Observation",
+                ),
+            )
+
+    # ----------------------------------------------------------
+    # Pretty formatting
+    # ----------------------------------------------------------
+
+    ET.indent(
+        root,
+        space="  ",
+    )
+
+    return ET.tostring(
+        root,
+        encoding="unicode",
+        xml_declaration=False,
+    )
+
+def _to_sdmx_structure(
+    meta: dict,
+    type: str,
+    lang: str,
+) -> pd.DataFrame:
+    """
+    Transform ILOSTAT metadata into an SDMX-oriented
+    structure description.
+    """
+
+    rows = []
+
+    def add_dimension(
+        component_id: str,
+        component_name: str | None,
+        representation: str = "coded",
+    ) -> None:
+        position = len(rows) + 1
+
+        row = {
+            "COMPONENT_ID": component_id,
+            "ROLE": "dimension",
+            "POSITION": position,
+            "REPRESENTATION": representation,
+        }
+
+        if type in {
+            "label",
+            "label_short",
+            "both",
+        }:
+            row["COMPONENT_NAME"] = (
+                component_name
+                or component_id
+            )
+
+        rows.append(
+            row
+        )
+
+    # ----------------------------------------------------------
+    # REF_AREA
+    # ----------------------------------------------------------
+
+    ref_area = (
+        meta.get("dimensions", {})
+        .get("ref_area", {})
+    )
+
+    add_dimension(
+        component_id="REF_AREA",
+        component_name=(
+            ref_area.get("label", {})
+            .get(lang)
+        ),
+    )
+
+    # ----------------------------------------------------------
+    # SOURCE
+    # ----------------------------------------------------------
+
+    add_dimension(
+        component_id="SOURCE",
+        component_name="Source",
+    )
+
+    # ----------------------------------------------------------
+    # FREQ
+    # ----------------------------------------------------------
+
+    add_dimension(
+        component_id="FREQ",
+        component_name=(
+        SDMX_COMPONENT_NAMES["FREQ"]
+        .get(lang)
+        )
+    )
+
+    # ----------------------------------------------------------
+    # MEASURE
+    # ----------------------------------------------------------
+
+    add_dimension(
+        component_id="MEASURE",
+        component_name=(
+            SDMX_COMPONENT_NAMES["MEASURE"]
+            .get(lang)
+        ),
+    )
+
+    # ----------------------------------------------------------
+    # Semantic dimensions
+    #
+    # SEX, AGE, ECO, EDU, OCU, etc.
+    # ----------------------------------------------------------
+
+    for dimension in meta.get(
+        "dimensions",
+        {}
+    ).values():
+
+        api_name = dimension.get(
+            "api_name"
+        )
+
+        dimension_type = dimension.get(
+            "type"
+        )
+
+        if (
+            not api_name
+            or not dimension_type
+        ):
+            continue
+
+        component_id = (
+            dimension_type.upper()
+        )
+
+        # REF_AREA was already handled above.
+        if component_id == "REF_AREA":
+            continue
+
+        add_dimension(
+            component_id=component_id,
+            component_name=(
+                dimension.get("label", {})
+                .get(lang)
+            ),
+        )
+
+    # ----------------------------------------------------------
+    # TIME_PERIOD
+    # ----------------------------------------------------------
+
+    add_dimension(
+        component_id="TIME_PERIOD",
+        component_name="Time period",
+        representation="time",
+    )
+
+    # ----------------------------------------------------------
+    # Primary measure
+    # ----------------------------------------------------------
+
+    row = {
+        "COMPONENT_ID": "OBS_VALUE",
+        "ROLE": "measure",
+        "POSITION": None,
+        "REPRESENTATION": "number",
+    }
+
+    if type in {
+        "label",
+        "label_short",
+        "both",
+    }:
+        row["COMPONENT_NAME"] = (
+            "Observation value"
+        )
+
+    rows.append(
+        row
+    )
+
+    # ----------------------------------------------------------
+    # Attributes
+    # ----------------------------------------------------------
+
+    attributes = [
+        (
+            "OBS_STATUS",
+            "Observation status",
+            "coded",
+        ),
+        (
+            "UNIT_MEASURE",
+            "Unit of measure",
+            "coded",
+        ),
+        (
+            "UNIT_MULT",
+            "Multiplier",
+            "coded",
+        ),
+        (
+            "NOTE_SOURCE",
+            "Source note",
+            "coded",
+        ),
+        (
+            "NOTE_INDICATOR",
+            "Indicator note",
+            "coded",
+        ),
+        (
+            "NOTE_CLASSIF",
+            "Classification note",
+            "coded",
+        ),
+        (
+            "BEST_SOURCE",
+            "Best source",
+            "coded",
+        ),
+    ]
+
+    for (
+        component_id,
+        component_name,
+        representation,
+    ) in attributes:
+
+        row = {
+            "COMPONENT_ID": component_id,
+            "ROLE": "attribute",
+            "POSITION": None,
+            "REPRESENTATION": representation,
+        }
+
+        if type in {
+            "label",
+            "label_short",
+            "both",
+        }:
+            row["COMPONENT_NAME"] = (
+                SDMX_COMPONENT_NAMES
+                .get(
+                    component_id,
+                    {},
+                )
+                .get(
+                    lang,
+                    component_name,
+                )
+            )
+
+        rows.append(
+            row
+        )
+
+    out = pd.DataFrame(
+        rows
+    )
+
+    out["POSITION"] = out["POSITION"].astype(
+        "Int64"
+    )
+
+    out["CODELIST"] = [
+        _get_codelist_name(
+            component_id=component_id,
+            representation=representation,
+        )
+        for component_id, representation
+        in zip(
+            out["COMPONENT_ID"],
+            out["REPRESENTATION"],
+            strict=True,
+        )
+    ]
+
+    if type in {
+        "label",
+        "label_short",
+    }:
+        out = out.drop(
+            columns=["COMPONENT_ID"],
+        )
+
+    return out
 
 def _format_sdmx_time_period(
     series: pd.Series,
@@ -1369,3 +2439,113 @@ def _add_note_labels(
             f"{column}_LABEL",
             mapped,
         )
+
+def _build_sdmx_structure_model(
+    dataset_id: str,
+    meta: dict,
+    lang: str = "en",
+) -> dict:
+    """
+    Build the internal SDMX structure model for an
+    ILOSTAT dataset.
+    """
+    structure = _to_sdmx_structure(
+        meta=meta,
+        type="both",
+        lang=lang,
+    )
+
+    components = []
+
+    for row in structure.to_dict(
+        orient="records"
+    ):
+        position = row["POSITION"]
+
+        if pd.isna(position):
+            position = None
+        else:
+            position = int(position)
+
+        codelist = row["CODELIST"]
+
+        if pd.isna(codelist):
+            codelist = None
+
+        components.append(
+            {
+                "id": row["COMPONENT_ID"],
+                "name": row["COMPONENT_NAME"],
+                "role": row["ROLE"],
+                "position": position,
+                "representation": row["REPRESENTATION"],
+                "codelist": codelist,
+                "attachment": (
+                    "observation"
+                    if row["ROLE"] == "attribute"
+                    else None
+            ),
+            }
+        )
+
+    return {
+        "id": dataset_id,
+        "agency": "ILO",
+        "version": "1.0",
+        "concept_scheme": f"CS_{dataset_id}",
+        "components": components,
+    }
+
+def _get_codelist_name(
+    component_id: str,
+    representation: str,
+) -> str | None:
+    """
+    Return the canonical ILOSTAT codelist name for an
+    SDMX component.
+
+    Non-coded components do not have a codelist.
+    """
+    if representation != "coded":
+        return None
+
+    return (
+        f"cl_{component_id.lower()}"
+    )
+
+def _add_sdmx_ref(
+    parent: ET.Element,
+    namespace: str,
+    element_name: str,
+    *,
+    agency: str,
+    object_id: str,
+    version: str,
+    class_name: str,
+) -> ET.Element:
+    """
+    Add an SDMX maintainable reference.
+    """
+    element = ET.SubElement(
+        parent,
+        ET.QName(
+            namespace,
+            element_name,
+        ),
+    )
+
+    ET.SubElement(
+        element,
+        ET.QName(
+            namespace,
+            "Ref",
+        ),
+        {
+            "agencyID": agency,
+            "id": object_id,
+            "version": version,
+            "class": class_name,
+        },
+    )
+
+    return element

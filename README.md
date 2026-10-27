@@ -2,7 +2,7 @@
 
 Python tools for accessing and working with [ILOSTAT](https://ilostat.ilo.org/) data.
 
-`ilostat` provides direct access to ILOSTAT bulk datasets as pandas DataFrames, with filtering, multilingual labels, caching, and access to ILOSTAT metadata and dictionaries.
+ilostat provides direct access to ILOSTAT data as pandas DataFrames, with filtering, multilingual labels, caching, metadata and dictionaries, together with SDMX-style data access and SDMX-ML 3.1 dataset structures.
 
 ## Installation
 
@@ -305,65 +305,170 @@ df = ilostat.get_df(
 )
 ```
 
-## Caching
+## SDMX
 
-Downloaded datasets and their dataset-specific dictionaries are cached locally.
+`ilostat` provides SDMX-style access to ILOSTAT data and dataset structures through `get_sdmx()`.
 
-By default, `ilostat` uses the operating system's standard user cache directory.
+### SDMX data
 
-A custom cache directory can be supplied:
+Use `get_sdmx()` to retrieve data using SDMX component names:
 
 ```python
-df = ilostat.get_df(
+import ilostat
+
+df = ilostat.get_sdmx(
     "UNE_TUNE_SEX_AGE_NB_A",
-    cache_dir=r"J:\my\ilostat\cache",
+    filters={
+        "REF_AREA": "FRA",
+        "SEX": "SEX_F",
+        "TIME_PERIOD": "2020:2025",
+    },
 )
 ```
 
-Cached datasets are versioned using the ILOSTAT `last.update` value from the table of contents. When a dataset is updated, the current version is downloaded and obsolete cached versions are removed.
+ILOSTAT dataset dimensions are mapped to SDMX-style components such as:
 
-Use `refresh=True` to force a refresh of the relevant metadata before checking the cache:
+```text
+REF_AREA
+SOURCE
+FREQ
+MEASURE
+SEX
+AGE
+TIME_PERIOD
+OBS_VALUE
+OBS_STATUS
+UNIT_MEASURE
+UNIT_MULT
+```
+
+Classification dimensions are derived from the dataset metadata. For example, an ILOSTAT `classif1` dimension representing age is exposed as `AGE`.
+
+The same code and label options used elsewhere in the package are available through `get_sdmx()`.
+
+For example:
 
 ```python
-df = ilostat.get_df(
+df = ilostat.get_sdmx(
     "UNE_TUNE_SEX_AGE_NB_A",
-    refresh=True,
+    type="both",
+    lang="fr",
+)
+```
+
+### SDMX structure
+
+Use `resource="structure"` to retrieve the structure associated with a dataset:
+
+```python
+structure = ilostat.get_sdmx(
+    "UNE_TUNE_SEX_AGE_NB_A",
+    resource="structure",
+    type="both",
+)
+
+print(structure)
+```
+
+The structure DataFrame describes the dataset components using:
+
+```text
+COMPONENT_ID
+ROLE
+POSITION
+REPRESENTATION
+COMPONENT_NAME
+CODELIST
+```
+
+For example, coded components are associated with canonical ILOSTAT codelists such as:
+
+```text
+REF_AREA       cl_ref_area
+SOURCE         cl_source
+FREQ           cl_freq
+MEASURE        cl_measure
+SEX            cl_sex
+AGE            cl_age
+OBS_STATUS     cl_obs_status
+UNIT_MEASURE   cl_unit_measure
+UNIT_MULT      cl_unit_mult
+BEST_SOURCE    cl_best_source
+```
+
+Non-coded components such as `TIME_PERIOD` and `OBS_VALUE` do not use codelists.
+
+Structure component names are available in English, French and Spanish:
+
+```python
+structure = ilostat.get_sdmx(
+    "UNE_TUNE_SEX_AGE_NB_A",
+    resource="structure",
+    type="both",
+    lang="fr",
+)
+```
+
+### SDMX structure formats
+
+Dataset structures can be serialized as SDMX-ML 3.1 or SDMX-JSON 2.1:
+
+```python
+xml = ilostat.get_sdmx(
+    "UNE_TUNE_SEX_AGE_NB_A",
+    resource="structure",
+    format="sdmx-ml",
+)
+
+json_text = ilostat.get_sdmx(
+    "UNE_TUNE_SEX_AGE_NB_A",
+    resource="structure",
+    format="sdmx-json",
+)
+```
+
+The generated structures include the dataset concept scheme, dimensions, time dimension, measure, attributes, representations, codelist references, and attribute relationships.
+
+SDMX-ML 3.1 and SDMX-JSON 2.1 outputs are validated during package development against the official SDMX schemas.
+
+The default structure format remains a pandas DataFrame:
+
+```python
+structure = ilostat.get_sdmx(
+    "UNE_TUNE_SEX_AGE_NB_A",
+    resource="structure",
+    format="dataframe",
 )
 ```
 
 ## Main API
 
+The main public functions are:
+
 ```python
 ilostat.get_df()
+ilostat.get_sdmx()
 ilostat.get_toc()
 ilostat.get_dic()
 ilostat.get_dataset_dic()
 ilostat.get_metadata()
+ilostat.get_cache_dir()
+ilostat.clean_cache()
 ```
 
-The main data retrieval interface is:
+`get_df()` provides direct access to the ILOSTAT bulk-data representation.
 
-```python
-ilostat.get_df(
-    dataset_id,
-    segment="indicator",
-    type="code",
-    lang="en",
-    filters=None,
-    best_source="yes",
-    fixed=True,
-    cache_dir=None,
-    refresh=False,
-)
-```
+`get_sdmx()` provides SDMX-style data access and dataset structures.
+
+`get_toc()`, `get_dic()`, `get_dataset_dic()`, and `get_metadata()` provide access to the supporting ILOSTAT metadata resources.
 
 ## Cache
 
-`ilostat` caches downloaded data and metadata locally to avoid downloading the same resources repeatedly.
+`ilostat` caches downloaded data and metadata locally to avoid repeatedly downloading the same resources.
 
 ### Default cache
 
-By default, no cache configuration is required:
+No cache configuration is required:
 
 ```python
 import ilostat
@@ -375,21 +480,19 @@ df = ilostat.get_df(
 
 When `cache_dir` is not specified, `ilostat` uses the operating system's standard user cache location.
 
-You can see the location used on your system with:
+You can inspect that location with:
 
 ```python
 ilostat.get_cache_dir()
 ```
 
-The default cache is **persistent**: cached files remain available after the Python session ends and are reused by later sessions.
+The default cache is persistent: cached files remain available after the Python session ends and can be reused by later sessions.
 
-This improves performance and reduces unnecessary downloads. However, ILOSTAT datasets can be large, and using many different datasets may progressively increase the size of the local cache.
-
-Users who prefer not to use space in their operating system user cache can specify their own cache directory.
+This improves performance and reduces unnecessary downloads. However, ILOSTAT datasets can be large, so using many datasets may progressively increase local cache size.
 
 ### Custom cache directory
 
-Use `cache_dir` to store cached resources in a location of your choice:
+A custom cache location can be specified with `cache_dir`:
 
 ```python
 df = ilostat.get_df(
@@ -398,21 +501,16 @@ df = ilostat.get_df(
 )
 ```
 
-The same cache directory can be shared across ILOSTAT operations:
+The same cache can be used by other ILOSTAT operations:
 
 ```python
-df = ilostat.get_df(
-    "UNE_TUNE_SEX_AGE_NB_A",
-    cache_dir="D:/ilostat_cache",
-)
-
 sdmx = ilostat.get_sdmx(
     "UNE_TUNE_SEX_AGE_NB_A",
     cache_dir="D:/ilostat_cache",
 )
 ```
 
-The custom directory can be inspected with:
+The custom location can be inspected with:
 
 ```python
 ilostat.get_cache_dir(
@@ -422,13 +520,11 @@ ilostat.get_cache_dir(
 
 ### Cache versions and refresh
 
-Cached resources are versioned using the ILOSTAT `last.update` timestamp.
+Cached datasets and dataset-specific resources are versioned using the ILOSTAT `last.update` timestamp.
 
-When the current version is already available locally, `ilostat` can reuse it instead of downloading the resource again.
+When the current version is already cached, it can be reused without downloading the resource again. When a newer version is downloaded, obsolete cached versions of the same resource are removed automatically.
 
-When a newer version of the same resource is cached, obsolete cached versions of that resource are removed automatically.
-
-To force a fresh retrieval, use:
+Use `refresh=True` to force a refresh of the relevant metadata before checking the cache:
 
 ```python
 df = ilostat.get_df(
@@ -437,7 +533,7 @@ df = ilostat.get_df(
 )
 ```
 
-The same `refresh` option can be used together with a custom cache:
+The option can also be used with a custom cache:
 
 ```python
 df = ilostat.get_df(
@@ -451,13 +547,13 @@ df = ilostat.get_df(
 
 Cached files are not automatically deleted when a Python session ends.
 
-To remove all resources stored in the default ILOSTAT cache:
+To clear the default ILOSTAT cache:
 
 ```python
 ilostat.clean_cache()
 ```
 
-To clean a custom ILOSTAT cache:
+To clear a custom cache:
 
 ```python
 ilostat.clean_cache(
@@ -465,9 +561,9 @@ ilostat.clean_cache(
 )
 ```
 
-`clean_cache()` removes the cached files and empty subdirectories while preserving the cache root directory.
+`clean_cache()` removes cached files and empty subdirectories while preserving the cache root directory.
 
-For users working with many or very large ILOSTAT datasets, using a custom `cache_dir` and cleaning it when no longer needed provides explicit control over local disk usage.
+For users working with many or very large ILOSTAT datasets, a custom `cache_dir` provides explicit control over local disk usage.
 
 ## Development
 

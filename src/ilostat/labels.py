@@ -22,6 +22,26 @@ NOTE_DIMENSIONS = (
     "note_source",
 )
 
+def _entries_to_dataframe(
+    entries: dict,
+) -> pd.DataFrame:
+    """
+    Convert dictionary entries to a DataFrame.
+
+    Dictionary entries may contain either multiple
+    list-valued records or one scalar-valued record.
+    """
+    if all(
+        not isinstance(value, list)
+        for value in entries.values()
+    ):
+        return pd.DataFrame(
+            [entries]
+        )
+
+    return pd.DataFrame(
+        entries
+    )
 
 def _build_note_label(
     value: object,
@@ -96,7 +116,9 @@ def add_labels(
 
         label_column = f"{dimension}.label_{lang}"
 
-        lookup = pd.DataFrame(entries)
+        lookup = _entries_to_dataframe(
+            entries
+        )
 
         if (
             dimension not in lookup.columns

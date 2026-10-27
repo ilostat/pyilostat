@@ -4,6 +4,7 @@ import ilostat
 from ilostat.sdmx import (
     _add_value_labels,
     _apply_sdmx_operator_filters,
+    _build_sdmx_structure_model,
     _extract_constant_filters,
     _format_sdmx_time_period,
     _get_component_map,
@@ -682,4 +683,422 @@ def test_sdmx_best_source_column():
 
     assert non_best.columns[-1] == (
         "BEST_SOURCE"
+    )
+
+def test_sdmx_structure():
+    df = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        resource="structure",
+        type="both",
+    )
+
+    assert isinstance(
+        df,
+        pd.DataFrame,
+    )
+
+    assert not df.empty
+
+    assert list(df["COMPONENT_ID"]) == [
+        "REF_AREA",
+        "SOURCE",
+        "FREQ",
+        "MEASURE",
+        "SEX",
+        "AGE",
+        "TIME_PERIOD",
+        "OBS_VALUE",
+        "OBS_STATUS",
+        "UNIT_MEASURE",
+        "UNIT_MULT",
+        "NOTE_SOURCE",
+        "NOTE_INDICATOR",
+        "NOTE_CLASSIF",
+        "BEST_SOURCE",
+    ]
+
+
+def test_sdmx_structure_roles():
+    df = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        resource="structure",
+        type="both",
+    )
+
+    roles = dict(
+        zip(
+            df["COMPONENT_ID"],
+            df["ROLE"],
+            strict=True,
+        )
+    )
+
+    assert roles["REF_AREA"] == "dimension"
+    assert roles["SOURCE"] == "dimension"
+    assert roles["TIME_PERIOD"] == "dimension"
+    assert roles["OBS_VALUE"] == "measure"
+    assert roles["OBS_STATUS"] == "attribute"
+    assert roles["BEST_SOURCE"] == "attribute"
+
+
+def test_sdmx_structure_code():
+    df = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        resource="structure",
+        type="code",
+    )
+
+    assert "COMPONENT_ID" in df.columns
+    assert "COMPONENT_NAME" not in df.columns
+
+
+def test_sdmx_structure_label():
+    df = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        resource="structure",
+        type="label",
+    )
+
+    assert "COMPONENT_ID" not in df.columns
+    assert "COMPONENT_NAME" in df.columns
+
+
+def test_sdmx_structure_label_short():
+    df = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        resource="structure",
+        type="label_short",
+    )
+
+    assert "COMPONENT_ID" not in df.columns
+    assert "COMPONENT_NAME" in df.columns
+
+
+def test_sdmx_structure_french():
+    df = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        resource="structure",
+        type="both",
+        lang="fr",
+        refresh=True,
+    )
+
+    names = dict(
+        zip(
+            df["COMPONENT_ID"],
+            df["COMPONENT_NAME"],
+            strict=True,
+        )
+    )
+
+    assert names["REF_AREA"] == "Zone de référence"
+    assert names["FREQ"] == "Fréquence"
+    assert names["MEASURE"] == "Mesure"
+    assert names["SEX"] == "Sexe"
+    assert names["AGE"] == "Âge"
+
+def test_sdmx_structure_dataframe_format():
+    df = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        resource="structure",
+        format="dataframe",
+        type="both",
+    )
+
+    assert isinstance(
+        df,
+        pd.DataFrame,
+    )
+
+    assert not df.empty
+
+def test_sdmx_invalid_format():
+    import pytest
+
+    with pytest.raises(
+        ValueError,
+        match="Invalid format value",
+    ):
+        ilostat.get_sdmx(
+            "UNE_TUNE_SEX_AGE_NB_A",
+            resource="structure",
+            format="invalid",
+        )
+
+def test_sdmx_structure_codelists():
+    df = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        resource="structure",
+        type="both",
+    )
+
+    codelists = dict(
+        zip(
+            df["COMPONENT_ID"],
+            df["CODELIST"],
+            strict=True,
+        )
+    )
+
+    assert codelists["REF_AREA"] == "cl_ref_area"
+    assert codelists["SOURCE"] == "cl_source"
+    assert codelists["FREQ"] == "cl_freq"
+    assert codelists["MEASURE"] == "cl_measure"
+    assert codelists["SEX"] == "cl_sex"
+    assert codelists["AGE"] == "cl_age"
+    assert pd.isna(
+        codelists["TIME_PERIOD"]
+    )
+    assert pd.isna(
+        codelists["OBS_VALUE"]
+    )
+    assert codelists["OBS_STATUS"] == "cl_obs_status"
+    assert codelists["UNIT_MEASURE"] == "cl_unit_measure"
+    assert codelists["UNIT_MULT"] == "cl_unit_mult"
+    assert codelists["NOTE_SOURCE"] == "cl_note_source"
+    assert codelists["NOTE_INDICATOR"] == "cl_note_indicator"
+    assert codelists["NOTE_CLASSIF"] == "cl_note_classif"
+    assert codelists["BEST_SOURCE"] == "cl_best_source"
+
+def test_build_sdmx_structure_model():
+    meta = ilostat.get_metadata(
+        "UNE_TUNE_SEX_AGE_NB_A",
+    )
+
+    model = _build_sdmx_structure_model(
+        dataset_id="UNE_TUNE_SEX_AGE_NB_A",
+        meta=meta,
+    )
+
+    assert model["id"] == "UNE_TUNE_SEX_AGE_NB_A"
+    assert model["agency"] == "ILO"
+    assert model["version"] == "1.0"
+
+    components = {
+        component["id"]: component
+        for component in model["components"]
+    }
+
+    assert components["REF_AREA"]["position"] == 1
+    assert components["REF_AREA"]["codelist"] == "cl_ref_area"
+
+    assert components["AGE"]["codelist"] == "cl_age"
+
+    assert components["TIME_PERIOD"]["codelist"] is None
+    assert components["TIME_PERIOD"]["representation"] == "time"
+
+    assert components["OBS_VALUE"]["role"] == "measure"
+    assert components["OBS_VALUE"]["codelist"] is None
+
+    assert components["BEST_SOURCE"]["codelist"] == "cl_best_source"    
+
+def test_sdmx_ml_time_dimension():
+    xml = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        resource="structure",
+        format="sdmx-ml",
+    )
+
+    assert (
+        '<str:TimeDimension id="TIME_PERIOD">'
+        in xml
+    )
+
+    assert (
+        'textType="ObservationalTimePeriod"'
+        in xml
+    )
+
+def test_sdmx_ml_attribute_relationships():
+    xml = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        resource="structure",
+        format="sdmx-ml",
+    )
+
+    assert xml.count(
+        "<str:AttributeRelationship>"
+    ) == 7
+
+    assert xml.count(
+        "<str:Observation"
+    ) == 7
+
+def test_sdmx_ml_concept_scheme():
+    xml = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        resource="structure",
+        format="sdmx-ml",
+    )
+
+    assert (
+        'id="CS_UNE_TUNE_SEX_AGE_NB_A"'
+        in xml
+    )
+
+    assert (
+        '<str:Concept id="REF_AREA">'
+        in xml
+    )
+
+    assert (
+        '<com:Name xml:lang="en">'
+        'Reference area'
+        '</com:Name>'
+        in xml
+    )
+
+    assert (
+        '<str:Concept id="OBS_VALUE">'
+        in xml
+    )
+
+    assert (
+        '<str:Concept id="BEST_SOURCE">'
+        in xml
+    )
+
+def test_sdmx_ml_structure_xml():
+    import xml.etree.ElementTree as ET
+
+    xml = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        resource="structure",
+        format="sdmx-ml",
+    )
+
+    root = ET.fromstring(
+        xml
+    )
+
+    assert root.tag == (
+        "{http://www.sdmx.org/resources/"
+        "sdmxml/schemas/v3_1/message}"
+        "Structure"
+    )
+
+def test_sdmx_ml_concept_scheme_xml():
+    import xml.etree.ElementTree as ET
+
+    xml = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        resource="structure",
+        format="sdmx-ml",
+    )
+
+    root = ET.fromstring(
+        xml
+    )
+
+    namespaces = {
+        "str": (
+            "http://www.sdmx.org/resources/"
+            "sdmxml/schemas/v3_1/structure"
+        ),
+    }
+
+    concept_scheme = root.find(
+        ".//str:ConceptScheme",
+        namespaces,
+    )
+
+    assert concept_scheme is not None
+
+    assert (
+        concept_scheme.get("id")
+        == "CS_UNE_TUNE_SEX_AGE_NB_A"
+    )
+
+def test_sdmx_json_validates_against_sdmx_21_schema():
+    import json
+    from pathlib import Path
+
+    from jsonschema import Draft7Validator
+
+    text = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        resource="structure",
+        format="sdmx-json",
+    )
+
+    document = json.loads(
+        text
+    )
+
+    schema_path = (
+        Path(__file__).parent
+        / "schemas"
+        / "sdmx-json-structure-schema.json"
+    )
+
+    schema = json.loads(
+        schema_path.read_text(
+            encoding="utf-8"
+        )
+    )
+
+    validator = Draft7Validator(
+        schema
+    )
+
+    errors = list(
+        validator.iter_errors(
+            document
+        )
+    )
+
+    assert not errors
+
+def test_sdmx_json_structure():
+    import json
+
+    text = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        resource="structure",
+        format="sdmx-json",
+    )
+
+    message = json.loads(
+        text
+    )
+
+    dsd = message["data"][
+        "dataStructures"
+    ][0]
+
+    assert (
+        dsd["id"]
+        == "UNE_TUNE_SEX_AGE_NB_A"
+    )
+
+    components = dsd[
+        "dataStructureComponents"
+    ]
+
+    dimensions = components[
+        "dimensionList"
+    ]["dimensions"]
+
+    assert [
+        dimension["id"]
+        for dimension in dimensions
+    ] == [
+        "REF_AREA",
+        "SOURCE",
+        "FREQ",
+        "MEASURE",
+        "SEX",
+        "AGE",
+    ]
+
+    assert (
+        components["dimensionList"]
+        ["timeDimension"]["id"]
+        == "TIME_PERIOD"
+    )
+
+    assert (
+        components["measureList"]
+        ["measures"][0]["id"]
+        == "OBS_VALUE"
     )
