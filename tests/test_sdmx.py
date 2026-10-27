@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 import ilostat
 from ilostat.sdmx import (
@@ -1047,7 +1048,7 @@ def test_sdmx_json_validates_against_sdmx_21_schema():
     )
 
     assert not errors
-    
+
 def test_sdmx_json_structure():
     import json
 
@@ -1101,3 +1102,132 @@ def test_sdmx_json_structure():
         ["measures"][0]["id"]
         == "OBS_VALUE"
     )
+
+def test_sdmx_codelist_age():
+    out = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        resource="codelist",
+        component="AGE",
+    )
+
+    assert list(out.columns) == [
+        "age",
+        "age.label",
+    ]
+
+    assert len(out) == 41
+
+
+def test_sdmx_codelist_ref_area():
+    out = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        resource="codelist",
+        component="REF_AREA",
+    )
+
+    assert list(out.columns) == [
+        "ref_area",
+        "ref_area.label",
+    ]
+
+
+def test_sdmx_codelist_language():
+    out = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        resource="codelist",
+        component="AGE",
+        lang="fr",
+    )
+
+    assert list(out.columns) == [
+        "age",
+        "age.label",
+    ]
+
+
+def test_sdmx_codelist_requires_component():
+    with pytest.raises(
+        ValueError,
+        match="component is required",
+    ):
+        ilostat.get_sdmx(
+            "UNE_TUNE_SEX_AGE_NB_A",
+            resource="codelist",
+        )
+
+
+def test_sdmx_codelist_non_coded_component():
+    with pytest.raises(
+        ValueError,
+        match="does not use a codelist",
+    ):
+        ilostat.get_sdmx(
+            "UNE_TUNE_SEX_AGE_NB_A",
+            resource="codelist",
+            component="TIME_PERIOD",
+        )
+
+def test_sdmx_codelist_sdmx_ml_validates_against_sdmx_31_schema():
+    from pathlib import Path
+
+    from lxml import etree
+
+    xml = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        resource="codelist",
+        component="AGE",
+        format="sdmx-ml",
+    )
+
+    schema_path = (
+        Path(__file__).parent
+        / "schemas"
+        / "sdmx31"
+        / "schemas"
+        / "SDMXMessage.xsd"
+    )
+
+    schema = etree.XMLSchema(
+        etree.parse(str(schema_path))
+    )
+
+    document = etree.fromstring(
+        xml.encode("utf-8")
+    )
+
+    schema.assertValid(document)
+
+def test_sdmx_codelist_sdmx_json_validates_against_sdmx_21_schema():
+    import json
+    from pathlib import Path
+
+    from jsonschema import Draft7Validator
+
+    text = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        resource="codelist",
+        component="AGE",
+        format="sdmx-json",
+    )
+
+    document = json.loads(text)
+
+    schema_path = (
+        Path(__file__).parent
+        / "schemas"
+        / "sdmx-json-structure-schema.json"
+    )
+
+    schema = json.loads(
+        schema_path.read_text(
+            encoding="utf-8"
+        )
+    )
+
+    validator = Draft7Validator(schema)
+
+    errors = list(
+        validator.iter_errors(document)
+    )
+
+    assert not errors

@@ -307,7 +307,7 @@ df = ilostat.get_df(
 
 ## SDMX
 
-`ilostat` provides SDMX-style access to ILOSTAT data and dataset structures through `get_sdmx()`.
+`ilostat` provides SDMX-style access to ILOSTAT data, dataset structures and codelists through `get_sdmx()`.
 
 ### SDMX data
 
@@ -344,9 +344,7 @@ UNIT_MULT
 
 Classification dimensions are derived from the dataset metadata. For example, an ILOSTAT `classif1` dimension representing age is exposed as `AGE`.
 
-The same code and label options used elsewhere in the package are available through `get_sdmx()`.
-
-For example:
+The DataFrame interface supports codes and localized labels:
 
 ```python
 df = ilostat.get_sdmx(
@@ -355,6 +353,8 @@ df = ilostat.get_sdmx(
     lang="fr",
 )
 ```
+
+Available label languages are English (`en`), French (`fr`) and Spanish (`es`).
 
 ### SDMX structure
 
@@ -381,7 +381,7 @@ COMPONENT_NAME
 CODELIST
 ```
 
-For example, coded components are associated with canonical ILOSTAT codelists such as:
+Coded components are associated with canonical ILOSTAT codelists, for example:
 
 ```text
 REF_AREA       cl_ref_area
@@ -409,9 +409,51 @@ structure = ilostat.get_sdmx(
 )
 ```
 
+### SDMX codelists
+
+Use `resource="codelist"` and an SDMX component identifier to retrieve the codelist associated with that component:
+
+```python
+age = ilostat.get_sdmx(
+    "UNE_TUNE_SEX_AGE_NB_A",
+    resource="codelist",
+    component="AGE",
+)
+```
+
+Codelist DataFrames use normalized component names:
+
+```text
+age                  age.label
+AGE_YTHADULT_YGE15   Age (Youth, adults): 15+
+AGE_YTHADULT_Y15-64  Age (Youth, adults): 15-64
+...
+```
+
+The applicable codelist is determined from the dataset structure, so the same interface can be used for other coded components:
+
+```python
+areas = ilostat.get_sdmx(
+    "UNE_TUNE_SEX_AGE_NB_A",
+    resource="codelist",
+    component="REF_AREA",
+)
+
+sex = ilostat.get_sdmx(
+    "UNE_TUNE_SEX_AGE_NB_A",
+    resource="codelist",
+    component="SEX",
+    lang="fr",
+)
+```
+
+Components without a coded representation, such as `TIME_PERIOD`, do not have a codelist.
+
 ### SDMX structure formats
 
-Dataset structures can be serialized as SDMX-ML 3.1 or SDMX-JSON 2.1:
+Structure and codelist resources can be serialized as SDMX-ML 3.1 or SDMX-JSON 2.1.
+
+For a dataset structure:
 
 ```python
 xml = ilostat.get_sdmx(
@@ -427,11 +469,25 @@ json_text = ilostat.get_sdmx(
 )
 ```
 
-The generated structures include the dataset concept scheme, dimensions, time dimension, measure, attributes, representations, codelist references, and attribute relationships.
+For a codelist:
 
-SDMX-ML 3.1 and SDMX-JSON 2.1 outputs are validated during package development against the official SDMX schemas.
+```python
+xml = ilostat.get_sdmx(
+    "UNE_TUNE_SEX_AGE_NB_A",
+    resource="codelist",
+    component="AGE",
+    format="sdmx-ml",
+)
 
-The default structure format remains a pandas DataFrame:
+json_text = ilostat.get_sdmx(
+    "UNE_TUNE_SEX_AGE_NB_A",
+    resource="codelist",
+    component="AGE",
+    format="sdmx-json",
+)
+```
+
+The default format remains a pandas DataFrame:
 
 ```python
 structure = ilostat.get_sdmx(
@@ -440,6 +496,8 @@ structure = ilostat.get_sdmx(
     format="dataframe",
 )
 ```
+
+SDMX-ML 3.1 and SDMX-JSON 2.1 structure and codelist outputs are validated during package testing against the official SDMX schemas.
 
 ## Main API
 
@@ -458,7 +516,7 @@ ilostat.clean_cache()
 
 `get_df()` provides direct access to the ILOSTAT bulk-data representation.
 
-`get_sdmx()` provides SDMX-style data access and dataset structures.
+`get_sdmx()` provides SDMX-style data access, dataset structures and component codelists, with SDMX-ML 3.1 and SDMX-JSON 2.1 serialization for structure resources.
 
 `get_toc()`, `get_dic()`, `get_dataset_dic()`, and `get_metadata()` provide access to the supporting ILOSTAT metadata resources.
 

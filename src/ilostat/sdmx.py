@@ -8,11 +8,13 @@ from pathlib import Path
 import pandas as pd
 
 from .data import get_df
+from .dictionary import get_dic
 from .metadata import get_metadata
 
 VALID_RESOURCES = {
     "data",
     "structure",
+    "codelist",
     "workflow",
 }
 
@@ -89,6 +91,7 @@ SDMX_COMPONENT_NAMES = {
 def get_sdmx(
     dataset_id: str,
     resource: str = "data",
+    component: str | None = None,
     segment: str = "indicator",
     type: str = "code",
     format: str = "dataframe",
@@ -98,7 +101,7 @@ def get_sdmx(
     fixed: bool = True,
     cache_dir: str | Path | None = None,
     refresh: bool = False,
-) -> pd.DataFrame:
+) -> pd.DataFrame | str:
     """
     Retrieve an ILOSTAT dataset using SDMX conventions.
 
@@ -107,25 +110,39 @@ def get_sdmx(
     dataset_id : str
         ILOSTAT dataset identifier.
 
-    resource : {"data", "structure", "workflow"}, default "data"
+    resource : {"data", "structure", "codelist", "workflow"}, default "data"
         SDMX resource to retrieve.
+
+    component : str or None, default None
+        SDMX component identifier used when resource="codelist",
+        for example "REF_AREA", "SEX", or "AGE".
 
     segment : str, default "indicator"
         ILOSTAT bulk-data segment.
 
-    type : {"code", "label", "label_short", "both"}, default "code"
-    Output representation for coded SDMX components.
+type : {"code", "label", "label_short", "both"}, default "code"
+    Output representation used for DataFrame resources.
 
     "code" returns codes only.
 
-    "label" returns localized labels. Classification dimensions
-    use their full labels, including classification context.
+    "label" returns localized full labels.
 
-    "label_short" returns localized labels using compact display
-    values for classification dimensions when available.
+    "label_short" returns localized compact labels for
+    classification dimensions when available.
 
-    "both" returns codes together with localized full labels
-    in adjacent columns.
+    "both" returns codes together with localized full labels.
+
+    This option does not modify SDMX-ML or SDMX-JSON
+    serializations.
+
+    format : {"dataframe", "sdmx-ml", "sdmx-json"}, default "dataframe"
+        Output format.
+
+        "dataframe" returns a pandas DataFrame.
+
+        "sdmx-ml" returns SDMX-ML output where supported.
+
+        "sdmx-json" returns SDMX-JSON output where supported.
 
     lang : {"en", "fr", "es"}, default "en"
         Language used for labels.
@@ -147,8 +164,9 @@ def get_sdmx(
 
     Returns
     -------
-    pandas.DataFrame
-        Requested SDMX-oriented resource.
+    pandas.DataFrame or str
+        Requested SDMX-oriented resource. SDMX-ML and
+        SDMX-JSON serializations are returned as strings.
     """
     resource = resource.lower()
     type = type.lower()
@@ -162,19 +180,31 @@ def get_sdmx(
     }:
         raise ValueError(
             "Invalid format value. "
-            "Choose from 'dataframe' or 'sdmx-ml'."
+            "Choose from 'dataframe', 'sdmx-ml', "
+            "or 'sdmx-json'."
         )
 
     if resource not in VALID_RESOURCES:
         raise ValueError(
             "Invalid resource value. "
-            "Choose from 'data', 'structure', or 'workflow'."
+            "Choose from 'data', 'structure', 'codelist', or 'workflow'."
         )
 
     if type not in VALID_TYPES:
         raise ValueError(
             "Invalid type value. "
             "Choose from 'code', 'label', 'label_short', or 'both'."
+        )
+
+    if resource == "codelist":
+        return _get_sdmx_codelist(
+            dataset_id=dataset_id,
+            segment=segment,
+            component=component,
+            format=format,
+            lang=lang,
+            cache_dir=cache_dir,
+            refresh=refresh,
         )
 
     if resource == "data":
@@ -203,6 +233,380 @@ def get_sdmx(
 
     raise NotImplementedError(
         f"SDMX resource '{resource}' is not implemented yet."
+    )
+
+def _get_sdmx_codelist(
+    dataset_id: str,
+    segment: str,
+    component: str | None,
+    format: str,
+    lang: str,
+    cache_dir: str | Path | None,
+    refresh: bool,
+):
+    """
+    Retrieve the codelist associated with an SDMX
+    component of an ILOSTAT dataset.
+    """
+        
+    if component is None:
+        raise ValueError(
+            "component is required when "
+            "resource='codelist'."
+        )
+
+    meta = get_metadata(
+        dataset_id=dataset_id,
+        segment=segment,
+        cache_dir=cache_dir,
+        refresh=refresh,
+    )
+
+    model = _build_sdmx_structure_model(
+        dataset_id=dataset_id,
+        meta=meta,
+        lang=lang,
+    )
+
+    component_id = component.upper()
+
+    match = next(
+        (
+            item
+            for item in model["components"]
+            if item["id"] == component_id
+        ),
+        None,
+    )
+
+    if match is None:
+        raise ValueError(
+            f"Unknown SDMX component "
+            f"'{component_id}' for dataset "
+            f"'{dataset_id}'."
+        )
+
+    codelist = match["codelist"]
+
+    if codelist is None:
+        raise ValueError(
+            f"SDMX component '{component_id}' "
+            "does not use a codelist."
+        )
+
+    out = get_dic(
+        codelist,
+        lang=lang,
+        cache_dir=cache_dir,
+        refresh=refresh,
+    )
+
+    target = component_id.lower()
+
+    if len(out.columns) >= 2:
+        out = out.rename(
+            columns={
+                out.columns[0]: target,
+                out.columns[1]: f"{target}.label",
+            }
+        )
+
+    if format == "dataframe":
+        return out
+
+    if format == "sdmx-ml":
+        return _to_sdmx_ml_codelist(
+            data=out,
+            component_id=component_id,
+            codelist=codelist,
+            lang=lang,
+        )
+
+    if format == "sdmx-json":
+        return _to_sdmx_json_codelist(
+            data=out,
+            component_id=component_id,
+            codelist=codelist,
+            lang=lang,
+        )
+
+    raise ValueError(
+        f"Unsupported SDMX codelist format '{format}'."
+    )
+
+def _to_sdmx_json_codelist(
+    data: pd.DataFrame,
+    component_id: str,
+    codelist: str,
+    lang: str,
+) -> str:
+    """
+    Serialize an ILOSTAT codelist as SDMX-JSON 2.1.
+    """
+
+    code_column = component_id.lower()
+    label_column = f"{code_column}.label"
+
+    codes = []
+
+    for _, row in data.iterrows():
+        code = str(
+            row[code_column]
+        )
+
+        label = str(
+            row[label_column]
+        )
+
+        codes.append(
+            {
+                "id": code,
+                "name": label,
+                "names": {
+                    lang: label,
+                },
+            }
+        )
+
+    codelist_name = (
+        f"{component_id} codelist"
+    )
+
+    message = {
+        "$schema": (
+            "https://json.sdmx.org/2.1/"
+            "sdmx-json-structure-schema.json"
+        ),
+        "meta": {
+            "id": (
+                f"CODELIST_{component_id}"
+            ),
+            "test": False,
+            "contentLanguages": [
+                lang,
+            ],
+            "sender": {
+                "id": "ILO",
+            },
+        },
+        "data": {
+            "codelists": [
+                {
+                    "id": codelist.upper(),
+                    "version": "1.0",
+                    "agencyID": "ILO",
+                    "name": codelist_name,
+                    "names": {
+                        lang: codelist_name,
+                    },
+                    "codes": codes,
+                }
+            ],
+        },
+    }
+
+    return json.dumps(
+        message,
+        ensure_ascii=False,
+        indent=2,
+    )
+
+def _to_sdmx_ml_codelist(
+    data: pd.DataFrame,
+    component_id: str,
+    codelist: str,
+    lang: str,
+) -> str:
+    """
+    Serialize an ILOSTAT codelist as SDMX-ML 3.1.
+    """
+
+    namespaces = {
+        "mes": (
+            "http://www.sdmx.org/resources/"
+            "sdmxml/schemas/v3_1/message"
+        ),
+        "str": (
+            "http://www.sdmx.org/resources/"
+            "sdmxml/schemas/v3_1/structure"
+        ),
+        "com": (
+            "http://www.sdmx.org/resources/"
+            "sdmxml/schemas/v3_1/common"
+        ),
+    }
+
+    for prefix, uri in namespaces.items():
+        ET.register_namespace(
+            prefix,
+            uri,
+        )
+
+    root = ET.Element(
+        ET.QName(
+            namespaces["mes"],
+            "Structure",
+        )
+    )
+
+    # ----------------------------------------------------------
+    # Header
+    # ----------------------------------------------------------
+
+    header = ET.SubElement(
+        root,
+        ET.QName(
+            namespaces["mes"],
+            "Header",
+        ),
+    )
+
+    ET.SubElement(
+        header,
+        ET.QName(
+            namespaces["mes"],
+            "ID",
+        ),
+    ).text = (
+        f"CODELIST_{component_id}"
+    )
+
+    ET.SubElement(
+        header,
+        ET.QName(
+            namespaces["mes"],
+            "Test",
+        ),
+    ).text = "false"
+
+    ET.SubElement(
+        header,
+        ET.QName(
+            namespaces["mes"],
+            "Prepared",
+        ),
+    ).text = (
+        datetime.now(timezone.utc)
+        .isoformat(
+            timespec="seconds"
+        )
+        .replace(
+            "+00:00",
+            "Z",
+        )
+    )
+
+    sender = ET.SubElement(
+        header,
+        ET.QName(
+            namespaces["mes"],
+            "Sender",
+        ),
+        {
+            "id": "ILO",
+        },
+    )
+
+    ET.SubElement(
+        sender,
+        ET.QName(
+            namespaces["com"],
+            "Name",
+        ),
+        {
+            "{http://www.w3.org/XML/1998/namespace}lang": "en",
+        },
+    ).text = (
+        "International Labour Organization"
+    )
+
+    # ----------------------------------------------------------
+    # Structures / Codelists
+    # ----------------------------------------------------------
+
+    structures = ET.SubElement(
+        root,
+        ET.QName(
+            namespaces["mes"],
+            "Structures",
+        ),
+    )
+
+    codelists = ET.SubElement(
+        structures,
+        ET.QName(
+            namespaces["str"],
+            "Codelists",
+        ),
+    )
+
+    codelist_element = ET.SubElement(
+        codelists,
+        ET.QName(
+            namespaces["str"],
+            "Codelist",
+        ),
+        {
+            "id": codelist.upper(),
+            "agencyID": "ILO",
+            "version": "1.0",
+        },
+    )
+
+    ET.SubElement(
+        codelist_element,
+        ET.QName(
+            namespaces["com"],
+            "Name",
+        ),
+        {
+            "{http://www.w3.org/XML/1998/namespace}lang": lang,
+        },
+    ).text = f"{component_id} codelist"
+
+    # ----------------------------------------------------------
+    # Codes
+    # ----------------------------------------------------------
+
+    code_column = component_id.lower()
+    label_column = f"{code_column}.label"
+
+    for _, row in data.iterrows():
+        code = ET.SubElement(
+            codelist_element,
+            ET.QName(
+                namespaces["str"],
+                "Code",
+            ),
+            {
+                "id": str(
+                    row[code_column]
+                ),
+            },
+        )
+
+        ET.SubElement(
+            code,
+            ET.QName(
+                namespaces["com"],
+                "Name",
+            ),
+            {
+                "{http://www.w3.org/XML/1998/namespace}lang": lang,
+            },
+        ).text = str(
+            row[label_column]
+        )
+
+    ET.indent(
+        root,
+        space="  ",
+    )
+
+    return ET.tostring(
+        root,
+        encoding="unicode",
+        xml_declaration=False,
     )
 
 def _get_sdmx_data(
