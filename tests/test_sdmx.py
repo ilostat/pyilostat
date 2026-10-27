@@ -1008,7 +1008,6 @@ def test_sdmx_ml_concept_scheme_xml():
         concept_scheme.get("id")
         == "CS_UNE_TUNE_SEX_AGE_NB_A"
     )
-
 def test_sdmx_json_validates_against_sdmx_21_schema():
     import json
     from pathlib import Path
@@ -1048,7 +1047,7 @@ def test_sdmx_json_validates_against_sdmx_21_schema():
     )
 
     assert not errors
-
+    
 def test_sdmx_json_structure():
     import json
 
