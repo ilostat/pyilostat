@@ -449,6 +449,63 @@ sex = ilostat.get_sdmx(
 
 Components without a coded representation, such as `TIME_PERIOD`, do not have a codelist.
 
+### SDMX dataflows
+
+Use `resource="dataflow"` to retrieve the ILOSTAT dataflow catalogue:
+
+```python
+dataflows = ilostat.get_sdmx(
+    resource="dataflow",
+)
+```
+
+The DataFrame contains the SDMX dataflow identifier and localized name:
+
+```text
+DATAFLOW_ID                 DATAFLOW_NAME
+UNE_TUNE_SEX_AGE_NB_A      Unemployment by sex and age (thousands) - Annual
+...
+```
+
+Dataflow names combine the dataset indicator label and frequency label from the ILOSTAT table of contents.
+
+A specific dataflow can be retrieved by dataset identifier:
+
+```python
+dataflow = ilostat.get_sdmx(
+    "UNE_TUNE_SEX_AGE_NB_A",
+    resource="dataflow",
+)
+```
+
+Dataflow names are available in English, French and Spanish:
+
+```python
+dataflow = ilostat.get_sdmx(
+    "UNE_TUNE_SEX_AGE_NB_A",
+    resource="dataflow",
+    lang="fr",
+)
+```
+
+Dataflows reference the corresponding ILOSTAT Data Structure Definition and can also be serialized as SDMX-ML 3.1 or SDMX-JSON 2.1:
+
+```python
+xml = ilostat.get_sdmx(
+    "UNE_TUNE_SEX_AGE_NB_A",
+    resource="dataflow",
+    format="sdmx-ml",
+)
+
+json_text = ilostat.get_sdmx(
+    "UNE_TUNE_SEX_AGE_NB_A",
+    resource="dataflow",
+    format="sdmx-json",
+)
+```
+
+SDMX-ML 3.1 and SDMX-JSON 2.1 dataflow outputs are validated during package testing against the official SDMX schemas.
+
 ### SDMX structure formats
 
 Structure and codelist resources can be serialized as SDMX-ML 3.1 or SDMX-JSON 2.1.

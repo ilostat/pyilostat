@@ -1231,3 +1231,118 @@ def test_sdmx_codelist_sdmx_json_validates_against_sdmx_21_schema():
     )
 
     assert not errors
+
+def test_sdmx_dataflow():
+    out = ilostat.get_sdmx(
+        resource="dataflow",
+    )
+
+    assert list(out.columns) == [
+        "DATAFLOW_ID",
+        "DATAFLOW_NAME",
+        "LAST_UPDATE",
+    ]
+
+    assert not out.empty
+
+
+def test_sdmx_dataflow_dataset():
+    out = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        resource="dataflow",
+    )
+
+    assert len(out) == 1
+
+    assert (
+        out.iloc[0]["DATAFLOW_ID"]
+        == "UNE_TUNE_SEX_AGE_NB_A"
+    )
+
+    assert (
+        "Annual"
+        in out.iloc[0]["DATAFLOW_NAME"]
+    )
+
+
+def test_sdmx_dataflow_french():
+    out = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        resource="dataflow",
+        lang="fr",
+    )
+
+    assert len(out) == 1
+    assert out.iloc[0]["DATAFLOW_NAME"]
+
+def test_sdmx_dataset_id_required():
+    with pytest.raises(
+        ValueError,
+        match="dataset_id is required",
+    ):
+        ilostat.get_sdmx(
+            resource="structure",
+        )
+
+def test_sdmx_dataflow_sdmx_ml_validates_against_sdmx_31_schema():
+    from pathlib import Path
+
+    from lxml import etree
+
+    xml = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        resource="dataflow",
+        format="sdmx-ml",
+    )
+
+    schema_path = (
+        Path(__file__).parent
+        / "schemas"
+        / "sdmx31"
+        / "schemas"
+        / "SDMXMessage.xsd"
+    )
+
+    schema = etree.XMLSchema(
+        etree.parse(str(schema_path))
+    )
+
+    document = etree.fromstring(
+        xml.encode("utf-8")
+    )
+
+    schema.assertValid(document)
+
+def test_sdmx_dataflow_sdmx_json_validates_against_sdmx_21_schema():
+    import json
+    from pathlib import Path
+
+    from jsonschema import Draft7Validator
+
+    text = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        resource="dataflow",
+        format="sdmx-json",
+    )
+
+    document = json.loads(text)
+
+    schema_path = (
+        Path(__file__).parent
+        / "schemas"
+        / "sdmx-json-structure-schema.json"
+    )
+
+    schema = json.loads(
+        schema_path.read_text(
+            encoding="utf-8"
+        )
+    )
+
+    validator = Draft7Validator(schema)
+
+    errors = list(
+        validator.iter_errors(document)
+    )
+
+    assert not errors

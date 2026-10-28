@@ -9,13 +9,13 @@ import pandas as pd
 
 from .data import get_df
 from .dictionary import get_dic
-from .metadata import get_metadata
+from .metadata import get_metadata, get_toc
 
 VALID_RESOURCES = {
     "data",
     "structure",
     "codelist",
-    "workflow",
+    "dataflow",
 }
 
 VALID_TYPES = {
@@ -89,7 +89,7 @@ SDMX_COMPONENT_NAMES = {
 }
 
 def get_sdmx(
-    dataset_id: str,
+    dataset_id: str | None = None,
     resource: str = "data",
     component: str | None = None,
     segment: str = "indicator",
@@ -103,14 +103,19 @@ def get_sdmx(
     refresh: bool = False,
 ) -> pd.DataFrame | str:
     """
-    Retrieve an ILOSTAT dataset using SDMX conventions.
+    Retrieve ILOSTAT resources using SDMX conventions.
 
     Parameters
     ----------
-    dataset_id : str
+    dataset_id : str or None, default None
         ILOSTAT dataset identifier.
 
-    resource : {"data", "structure", "codelist", "workflow"}, default "data"
+        Required for data, structure, and codelist resources.
+        For resource="dataflow", None returns the complete
+        dataflow catalogue and a dataset identifier returns
+        the corresponding dataflow.
+
+    resource : {"data", "structure", "codelist", "dataflow"}, default "data"
         SDMX resource to retrieve.
 
     component : str or None, default None
@@ -120,20 +125,20 @@ def get_sdmx(
     segment : str, default "indicator"
         ILOSTAT bulk-data segment.
 
-type : {"code", "label", "label_short", "both"}, default "code"
-    Output representation used for DataFrame resources.
+    type : {"code", "label", "label_short", "both"}, default "code"
+        Output representation used for DataFrame resources.
 
-    "code" returns codes only.
+        "code" returns codes only.
 
-    "label" returns localized full labels.
+        "label" returns localized full labels.
 
-    "label_short" returns localized compact labels for
-    classification dimensions when available.
+        "label_short" returns localized compact labels for
+        classification dimensions when available.
 
-    "both" returns codes together with localized full labels.
+        "both" returns codes together with localized full labels.
 
-    This option does not modify SDMX-ML or SDMX-JSON
-    serializations.
+        This option does not modify SDMX-ML or SDMX-JSON
+        serializations.
 
     format : {"dataframe", "sdmx-ml", "sdmx-json"}, default "dataframe"
         Output format.
@@ -145,22 +150,24 @@ type : {"code", "label", "label_short", "both"}, default "code"
         "sdmx-json" returns SDMX-JSON output where supported.
 
     lang : {"en", "fr", "es"}, default "en"
-        Language used for labels.
+        Language used for labels and dataflow names.
 
     filters : dict or None, default None
-        Filters applied to the dataset.
+        Filters applied when resource="data".
 
     best_source : {"yes", "no", "all"}, default "yes"
-        Select best-source observations.
+        Select best-source observations when resource="data".
 
     fixed : bool, default True
-        If True, treat filter values as literal strings.
+        If True, treat filter values as literal strings when
+        resource="data".
 
     cache_dir : str, pathlib.Path or None, default None
         Directory used to cache downloaded files.
 
     refresh : bool, default False
-        If True, refresh metadata before checking cached data.
+        If True, refresh the relevant resources before checking
+        cached data.
 
     Returns
     -------
@@ -168,6 +175,7 @@ type : {"code", "label", "label_short", "both"}, default "code"
         Requested SDMX-oriented resource. SDMX-ML and
         SDMX-JSON serializations are returned as strings.
     """
+
     resource = resource.lower()
     type = type.lower()
 
@@ -187,7 +195,7 @@ type : {"code", "label", "label_short", "both"}, default "code"
     if resource not in VALID_RESOURCES:
         raise ValueError(
             "Invalid resource value. "
-            "Choose from 'data', 'structure', 'codelist', or 'workflow'."
+            "Choose from 'data', 'structure', 'codelist', or 'dataflow'."
         )
 
     if type not in VALID_TYPES:
@@ -201,6 +209,25 @@ type : {"code", "label", "label_short", "both"}, default "code"
             dataset_id=dataset_id,
             segment=segment,
             component=component,
+            format=format,
+            lang=lang,
+            cache_dir=cache_dir,
+            refresh=refresh,
+        )
+
+    if (
+        resource != "dataflow"
+        and dataset_id is None
+    ):
+        raise ValueError(
+            "dataset_id is required when "
+            f"resource='{resource}'."
+        )
+
+    if resource == "dataflow":
+        return _get_sdmx_dataflow(
+            dataset_id=dataset_id,
+            segment=segment,
             format=format,
             lang=lang,
             cache_dir=cache_dir,
@@ -233,6 +260,315 @@ type : {"code", "label", "label_short", "both"}, default "code"
 
     raise NotImplementedError(
         f"SDMX resource '{resource}' is not implemented yet."
+    )
+
+def _get_sdmx_dataflow(
+    dataset_id: str | None,
+    segment: str,
+    format: str,
+    lang: str,
+    cache_dir: str | Path | None,
+    refresh: bool,
+) -> pd.DataFrame:
+    """
+    Retrieve ILOSTAT dataflows using SDMX conventions.
+    """
+
+    toc = get_toc(
+        segment=segment,
+        lang=lang,
+        cache_dir=cache_dir,
+        refresh=refresh,
+    )
+
+    if dataset_id is not None:
+        toc = toc.loc[
+            toc["id"] == dataset_id
+        ].copy()
+
+        if toc.empty:
+            raise ValueError(
+                f"Dataset '{dataset_id}' was not found "
+                f"in the '{segment}' table of contents."
+            )
+
+    out = pd.DataFrame(
+        {
+            "DATAFLOW_ID": toc["id"],
+            "DATAFLOW_NAME": (
+                toc["indicator.label"]
+                + " - "
+                + toc["freq.label"]
+            ),
+            "LAST_UPDATE": toc["last.update"],
+        }
+    )
+
+    if format == "dataframe":
+        return out.reset_index(
+            drop=True
+        )
+
+    if format == "sdmx-ml":
+        return _to_sdmx_ml_dataflow(
+            data=out,
+            lang=lang,
+        )
+
+    if format == "sdmx-json":
+        return _to_sdmx_json_dataflow(
+            data=out,
+            lang=lang,
+        )
+
+    raise ValueError(
+        f"Unsupported SDMX dataflow format '{format}'."
+    )
+
+def _to_sdmx_json_dataflow(
+    data: pd.DataFrame,
+    lang: str,
+) -> str:
+    """
+    Serialize ILOSTAT dataflows as SDMX-JSON 2.1.
+    """
+
+    dataflows = []
+
+    for _, row in data.iterrows():
+        dataflow_id = str(
+            row["DATAFLOW_ID"]
+        )
+
+        dataflow_name = str(
+            row["DATAFLOW_NAME"]
+        )
+
+        dataflows.append(
+            {
+                "id": dataflow_id,
+                "version": "1.0",
+                "agencyID": "ILO",
+                "name": dataflow_name,
+                "names": {
+                    lang: dataflow_name,
+                },
+                "structure": (
+                    "urn:sdmx:org.sdmx.infomodel."
+                    "datastructure.DataStructure="
+                    f"ILO:{dataflow_id}(1.0)"
+                ),
+            }
+        )
+
+    message = {
+        "$schema": (
+            "https://json.sdmx.org/2.1/"
+            "sdmx-json-structure-schema.json"
+        ),
+        "meta": {
+            "id": "ILOSTAT_DATAFLOWS",
+            "test": False,
+            "contentLanguages": [
+                lang,
+            ],
+            "sender": {
+                "id": "ILO",
+            },
+        },
+        "data": {
+            "dataflows": dataflows,
+        },
+    }
+
+    return json.dumps(
+        message,
+        ensure_ascii=False,
+        indent=2,
+    )
+
+def _to_sdmx_ml_dataflow(
+    data: pd.DataFrame,
+    lang: str,
+) -> str:
+    """
+    Serialize ILOSTAT dataflows as SDMX-ML 3.1.
+    """
+
+    namespaces = {
+        "mes": (
+            "http://www.sdmx.org/resources/"
+            "sdmxml/schemas/v3_1/message"
+        ),
+        "str": (
+            "http://www.sdmx.org/resources/"
+            "sdmxml/schemas/v3_1/structure"
+        ),
+        "com": (
+            "http://www.sdmx.org/resources/"
+            "sdmxml/schemas/v3_1/common"
+        ),
+    }
+
+    for prefix, uri in namespaces.items():
+        ET.register_namespace(
+            prefix,
+            uri,
+        )
+
+    root = ET.Element(
+        ET.QName(
+            namespaces["mes"],
+            "Structure",
+        )
+    )
+
+    # ----------------------------------------------------------
+    # Header
+    # ----------------------------------------------------------
+
+    header = ET.SubElement(
+        root,
+        ET.QName(
+            namespaces["mes"],
+            "Header",
+        ),
+    )
+
+    ET.SubElement(
+        header,
+        ET.QName(
+            namespaces["mes"],
+            "ID",
+        ),
+    ).text = "ILOSTAT_DATAFLOWS"
+
+    ET.SubElement(
+        header,
+        ET.QName(
+            namespaces["mes"],
+            "Test",
+        ),
+    ).text = "false"
+
+    ET.SubElement(
+        header,
+        ET.QName(
+            namespaces["mes"],
+            "Prepared",
+        ),
+    ).text = (
+        datetime.now(timezone.utc)
+        .isoformat(
+            timespec="seconds"
+        )
+        .replace(
+            "+00:00",
+            "Z",
+        )
+    )
+
+    sender = ET.SubElement(
+        header,
+        ET.QName(
+            namespaces["mes"],
+            "Sender",
+        ),
+        {
+            "id": "ILO",
+        },
+    )
+
+    ET.SubElement(
+        sender,
+        ET.QName(
+            namespaces["com"],
+            "Name",
+        ),
+        {
+            "{http://www.w3.org/XML/1998/namespace}lang": "en",
+        },
+    ).text = (
+        "International Labour Organization"
+    )
+
+    # ----------------------------------------------------------
+    # Structures / Dataflows
+    # ----------------------------------------------------------
+
+    structures = ET.SubElement(
+        root,
+        ET.QName(
+            namespaces["mes"],
+            "Structures",
+        ),
+    )
+
+    dataflows = ET.SubElement(
+        structures,
+        ET.QName(
+            namespaces["str"],
+            "Dataflows",
+        ),
+    )
+
+    for _, row in data.iterrows():
+
+        dataflow_id = str(
+            row["DATAFLOW_ID"]
+        )
+
+        dataflow_name = str(
+            row["DATAFLOW_NAME"]
+        )
+
+        dataflow = ET.SubElement(
+            dataflows,
+            ET.QName(
+                namespaces["str"],
+                "Dataflow",
+            ),
+            {
+                "id": dataflow_id,
+                "agencyID": "ILO",
+                "version": "1.0",
+            },
+        )
+
+        ET.SubElement(
+            dataflow,
+            ET.QName(
+                namespaces["com"],
+                "Name",
+            ),
+            {
+                "{http://www.w3.org/XML/1998/namespace}lang": lang,
+            },
+        ).text = dataflow_name
+
+        structure = ET.SubElement(
+            dataflow,
+            ET.QName(
+                namespaces["str"],
+                "Structure",
+            ),
+        )
+
+        structure.text = (
+            "urn:sdmx:org.sdmx.infomodel."
+            "datastructure.DataStructure="
+            f"ILO:{dataflow_id}(1.0)"
+        )
+
+    ET.indent(
+        root,
+        space="  ",
+    )
+
+    return ET.tostring(
+        root,
+        encoding="unicode",
+        xml_declaration=False,
     )
 
 def _get_sdmx_codelist(
