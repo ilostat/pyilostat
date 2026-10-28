@@ -7,7 +7,12 @@ repo_url: https://github.com/ilostat/pyilostat
 
 theme:
   name: material
-
+  logo: assets/images/ilo-logo-white.png
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    
 extra_css:
   - stylesheets/extra.css
   

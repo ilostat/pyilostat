@@ -5,3 +5,13 @@
 .md-tabs {
     background-color: #1E2DBE;
 }
+
+.md-header__button.md-logo {
+    padding: 0.2rem 0.4rem;
+}
+
+.md-header__button.md-logo img,
+.md-header__button.md-logo svg {
+    width: auto;
+    height: 2.2rem;
+}
