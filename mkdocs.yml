@@ -1,0 +1,42 @@
+site_name: ilostat
+site_description: Python tools for accessing and working with ILOSTAT data
+site_url: https://ilostat.github.io/pyilostat/
+
+repo_name: ilostat/pyilostat
+repo_url: https://github.com/ilostat/pyilostat
+
+theme:
+  name: material
+
+extra_css:
+  - stylesheets/extra.css
+  
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Data access: data.md
+  - Cache: cache.md
+  - SDMX:
+      - Overview: sdmx/index.md
+      - Structures: sdmx/structure.md
+      - Codelists: sdmx/codelist.md
+      - Dataflows: sdmx/dataflow.md
+  - API reference: reference/api.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: false
+            docstring_style: numpy
+
+    
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true      

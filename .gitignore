@@ -26,3 +26,5 @@ Thumbs.db
 "@ | Set-Content .gitignore
 # Local test data
 /test.parquet
+
+site/
