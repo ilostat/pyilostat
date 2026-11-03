@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 import requests
 
+from ._http import HTTP_HEADERS
 from .cache import (
     _cache_filename,
     _remove_old_cache_files,
@@ -115,6 +116,7 @@ def _get_df_single(
 
         response = requests.get(
             url,
+            headers=HTTP_HEADERS,
             timeout=60,
         )
         response.raise_for_status()

@@ -7,6 +7,7 @@ from typing import Any
 import pandas as pd
 import requests
 
+from ._http import HTTP_HEADERS
 from .cache import get_cache_dir
 
 BASE_URL = "https://rplumber.ilo.org/files"
@@ -88,6 +89,7 @@ def get_toc(
 
         response = requests.get(
             url,
+            headers=HTTP_HEADERS,
             timeout=60,
         )
         response.raise_for_status()
@@ -183,6 +185,7 @@ def get_metadata(
 
         response = requests.get(
             url,
+            headers=HTTP_HEADERS,
             timeout=60,
         )
         response.raise_for_status()
