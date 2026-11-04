@@ -3023,17 +3023,28 @@ def _apply_sdmx_operator_filters(
 
     Supported operators are:
     eq, ne, lt, le, gt, ge.
+
+    Equality and inequality reuse the normal ILOSTAT
+    partial-matching semantics. TIME_PERIOD ordering
+    operators compare the first four characters as a year.
     """
     if filters is None:
         return df, None
 
-    operators = {
-        "eq": lambda series, value: series == value,
-        "ne": lambda series, value: series != value,
+    comparison_operators = {
         "lt": lambda series, value: series < value,
         "le": lambda series, value: series <= value,
         "gt": lambda series, value: series > value,
         "ge": lambda series, value: series >= value,
+    }
+
+    valid_operators = {
+        "eq",
+        "ne",
+        "lt",
+        "le",
+        "gt",
+        "ge",
     }
 
     for column, condition in filters.items():
@@ -3048,9 +3059,6 @@ def _apply_sdmx_operator_filters(
             column
         ].astype("string")
 
-        if column == "TIME_PERIOD":
-            series = series.str[:4]
-
         mask = pd.Series(
             True,
             index=df.index,
@@ -3058,7 +3066,7 @@ def _apply_sdmx_operator_filters(
 
         for operator, value in condition.items():
 
-            if operator not in operators:
+            if operator not in valid_operators:
                 raise ValueError(
                     f"Unsupported SDMX filter operator "
                     f"'{operator}'. Choose from "
@@ -3067,13 +3075,49 @@ def _apply_sdmx_operator_filters(
 
             comparison_value = str(value)
 
-            if column == "TIME_PERIOD":
-                comparison_value = comparison_value[:4]
+            # --------------------------------------------------
+            # Equality / exclusion
+            #
+            # Reuse normal ILOSTAT partial-matching semantics.
+            # --------------------------------------------------
 
-            mask &= operators[
+            if operator in {
+                "eq",
+                "ne",
+            }:
+                match = series.str.contains(
+                    comparison_value,
+                    regex=True,
+                    na=False,
+                )
+
+                if operator == "eq":
+                    mask &= match
+                else:
+                    mask &= ~match
+
+                continue
+
+            # --------------------------------------------------
+            # Ordering
+            #
+            # TIME_PERIOD comparisons operate on the year.
+            # --------------------------------------------------
+
+            comparison_series = series
+
+            if column == "TIME_PERIOD":
+                comparison_series = (
+                    comparison_series.str[:4]
+                )
+                comparison_value = (
+                    comparison_value[:4]
+                )
+
+            mask &= comparison_operators[
                 operator
             ](
-                series,
+                comparison_series,
                 comparison_value,
             )
 

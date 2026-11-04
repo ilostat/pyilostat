@@ -1346,3 +1346,141 @@ def test_sdmx_dataflow_sdmx_json_validates_against_sdmx_21_schema():
     )
 
     assert not errors
+
+def test_sdmx_filter_partial():
+    out = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        filters={
+            "SEX": "T",
+        },
+    )
+
+    assert set(out["SEX"]) == {
+        "SEX_T",
+    }
+
+
+def test_sdmx_filter_eq_partial():
+    out = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        filters={
+            "SEX": {
+                "eq": "T",
+            },
+        },
+    )
+
+    assert set(out["SEX"]) == {
+        "SEX_T",
+    }
+
+
+def test_sdmx_filter_eq_full_code():
+    out = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        filters={
+            "SEX": {
+                "eq": "SEX_T",
+            },
+        },
+    )
+
+    assert set(out["SEX"]) == {
+        "SEX_T",
+    }
+
+
+def test_sdmx_filter_ne_partial():
+    out = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        filters={
+            "SEX": {
+                "ne": "T",
+            },
+        },
+    )
+
+    assert "SEX_T" not in set(
+        out["SEX"]
+    )
+
+
+def test_sdmx_filter_time_eq():
+    out = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        filters={
+            "TIME_PERIOD": {
+                "eq": "2020",
+            },
+        },
+    )
+
+    assert set(
+        out["TIME_PERIOD"]
+    ) == {
+        "2020",
+    }
+
+
+def test_sdmx_filter_time_range():
+    out = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        filters={
+            "TIME_PERIOD": {
+                "ge": "2020",
+                "le": "2023",
+            },
+        },
+    )
+
+    assert set(
+        out["TIME_PERIOD"]
+    ) == {
+        "2020",
+        "2021",
+        "2022",
+        "2023",
+    }
+
+
+def test_sdmx_filter_time_strict_bounds():
+    out = ilostat.get_sdmx(
+        "UNE_TUNE_SEX_AGE_NB_A",
+        filters={
+            "TIME_PERIOD": {
+                "gt": "2020",
+                "lt": "2024",
+            },
+        },
+    )
+
+    assert set(
+        out["TIME_PERIOD"]
+    ) == {
+        "2021",
+        "2022",
+        "2023",
+    }
+
+def test_sdmx_filter_time_quarterly_year():
+    out = ilostat.get_sdmx(
+        "UNE_DEAP_SEX_AGE_RT_Q",
+        filters={
+            "REF_AREA": "FRA",
+            "TIME_PERIOD": {
+                "ge": "2025",
+                "le": "2025",
+            },
+        },
+    )
+
+    assert not out.empty
+
+    assert set(
+        out["TIME_PERIOD"]
+    ) == {
+        "2025-Q1",
+        "2025-Q2",
+        "2025-Q3",
+        "2025-Q4",
+    }
