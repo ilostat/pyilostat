@@ -1,4 +1,3 @@
-@"
 # Python environments
 .venv/
 .venv-*/
@@ -23,8 +22,9 @@ htmlcov/
 # IDE / OS files
 .DS_Store
 Thumbs.db
-"@ | Set-Content .gitignore
+
 # Local test data
 /test.parquet
 
+# MkDocs generated site
 site/
